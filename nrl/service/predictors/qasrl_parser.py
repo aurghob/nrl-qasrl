@@ -16,7 +16,11 @@ from allennlp.data.fields import ListField, SpanField
 from allennlp.service.predictors import Predictor
 from allennlp.common.file_utils import cached_path
 
+from collections import defaultdict
+
 from nrl.data.util import cleanse_sentence_text
+
+from stanfordcorenlp import StanfordCoreNLP
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
@@ -71,26 +75,35 @@ class QaSrlParserPredictor(Predictor):
 
         self._pretrained_vectors = read_pretrained_file("https://s3-us-west-2.amazonaws.com/allennlp/datasets/glove/glove.6B.100d.txt.gz")
 
+    def isVerbButNotAuxilary(self, index, word, posTokens, childToDepAndParent):
+        return posTokens[index][1].startswith("VB") and (not(any((aTuple[0].startswith("aux") for aTuple in childToDepAndParent[index+1]))))
+                
+        
     def _sentence_to_qasrl_instances(self, json_dict: JsonDict) -> Tuple[List[Instance], JsonDict]:
         sentence = json_dict["sentence"]
-        tokens = self._tokenizer.split_words(sentence)
-        words = [token.text for token in tokens]
+        nlp = StanfordCoreNLP(r'/mnt/c/Masters Studies/interests/question answering/stanford-corenlp-full-2018-02-27/stanford-corenlp-full-2018-02-27')
+        #tokens = self._tokenizer.split_words(sentence)
+        posTokens = nlp.pos_tag(sentence)
+        depParse = nlp.dependency_parse(sentence)
+        childToDepAndParent = defaultdict(list)
+        _ = {childToDepAndParent[child].append((dep, parent, child)) for dep, parent, child in depParse}
+        tokens = [token for token, pos in posTokens]
+        words = [token for token in tokens]
         text = " ".join(words)
 
         result_dict: JsonDict = {"words": words, "verbs": []}
 
         instances: List[Instance] = []
-
         verb_indexes = []
         for i, word in enumerate(tokens):
-            if word.pos_ == "VERB" and not word.text.lower() in AUX_VERBS:
-                verb = word.text
+            #if word.pos_ == "VERB" and not word.text.lower() in AUX_VERBS:
+            if self.isVerbButNotAuxilary(i, word, posTokens, childToDepAndParent):    
+                verb = word
                 result_dict["verbs"].append(verb)
 
                 instance = self._dataset_reader._make_instance_from_text(text, i)
                 instances.append(instance)
                 verb_indexes.append(i)
-
         return instances, result_dict, words, verb_indexes
 
 
@@ -98,7 +111,6 @@ class QaSrlParserPredictor(Predictor):
     def predict_json(self, inputs: JsonDict, cuda_device: int = 0) -> JsonDict:
 
         instances, results, words, verb_indexes = self._sentence_to_qasrl_instances(inputs)
-
         # Expand vocab
         cleansed_words = cleanse_sentence_text(words)
         added_words = []
