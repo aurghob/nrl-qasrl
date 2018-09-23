@@ -68,20 +68,20 @@ def read_pretrained_file(embeddings_filename, embedding_dim=100):
 class QaSrlParserPredictor(Predictor):
     def __init__(self, model: Model, dataset_reader: DatasetReader) -> None:
         super().__init__(model, dataset_reader)
-        self._tokenizer = SpacyWordSplitter(language='en_core_web_sm', pos_tags=True)
+        #self._tokenizer = SpacyWordSplitter(language='en_core_web_sm', pos_tags=True)
         self._model_vocab = model.vocab
 
         self._verb_map = read_verb_file("data/wiktionary/en_verb_inflections.txt")
 
         self._pretrained_vectors = read_pretrained_file("https://s3-us-west-2.amazonaws.com/allennlp/datasets/glove/glove.6B.100d.txt.gz")
 
-    def isVerbButNotAuxilary(self, index, word, posTokens, childToDepAndParent):
-        return posTokens[index][1].startswith("VB") and (not(any((aTuple[0].startswith("aux") for aTuple in childToDepAndParent[index+1]))))
+    def isVerbButNotAuxilary(self, index, word, posTokens, childToTuple):
+        return posTokens[index][1].startswith("VB") and (not(any((aTuple[0].startswith("aux") for aTuple in childToTuple[index+1]))))
                 
         
     def _sentence_to_qasrl_instances(self, json_dict: JsonDict) -> Tuple[List[Instance], JsonDict]:
         sentence = json_dict["sentence"]
-        nlp = StanfordCoreNLP(r'/mnt/c/Masters Studies/interests/question answering/stanford-corenlp-full-2018-02-27/stanford-corenlp-full-2018-02-27')
+        nlp = StanfordCoreNLP(r'lib/stanford-corenlp-full-2018-02-27')
         #tokens = self._tokenizer.split_words(sentence)
         posTokens = nlp.pos_tag(sentence)
         depParse = nlp.dependency_parse(sentence)
@@ -96,7 +96,6 @@ class QaSrlParserPredictor(Predictor):
         instances: List[Instance] = []
         verb_indexes = []
         for i, word in enumerate(tokens):
-            #if word.pos_ == "VERB" and not word.text.lower() in AUX_VERBS:
             if self.isVerbButNotAuxilary(i, word, posTokens, childToDepAndParent):    
                 verb = word
                 result_dict["verbs"].append(verb)
