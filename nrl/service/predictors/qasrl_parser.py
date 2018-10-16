@@ -103,6 +103,10 @@ class QaSrlParserPredictor(Predictor):
                 instance = self._dataset_reader._make_instance_from_text(text, i)
                 instances.append(instance)
                 verb_indexes.append(i)
+        try:
+            nlp.close()
+        except Exception as e:
+            pass
         return instances, result_dict, words, verb_indexes
 
 
